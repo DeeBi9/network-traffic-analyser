@@ -22,6 +22,17 @@ type InterfaceIP struct {
 	IP   string // IP address of network interface
 }
 
+// Network Interface that can be captured
+type CapInterface struct {
+	Name        string
+	Description string
+	Flags       uint32
+	Addresses   []pcap.InterfaceAddress
+}
+
+// Map to store interfaces that can be captured
+var capinterfaceStructure = make(map[int]CapInterface)
+
 // Map to store interfaces with their index as the key
 var interfaceStructure = make(map[int]NetInterface)
 
@@ -118,4 +129,37 @@ func InterfaceDescription() {
 		fmt.Println("Description:", description)
 	}
 
+}
+
+// Names
+var CapInterfaceNames []string
+
+func CapInterfaces() []string {
+	interfaces, err := pcap.FindAllDevs()
+	if err != nil {
+		panic(err)
+	}
+	i := 1
+	for _, iface := range interfaces {
+		capinterfaceStructure[i] = CapInterface{
+			Name:        iface.Name,
+			Description: iface.Description,
+			Flags:       iface.Flags,
+			Addresses:   iface.Addresses,
+		}
+		i++
+	}
+
+	// Clear CapInterfaceNames before appending
+	CapInterfaceNames = nil
+
+	for _, value := range capinterfaceStructure {
+		fmt.Println("Name : ", value.Name)
+		fmt.Println("Description : ", value.Description)
+		fmt.Println("Flags : ", value.Flags)
+		fmt.Println("Addresses : ", value.Addresses)
+		CapInterfaceNames = append(CapInterfaceNames, value.Name)
+	}
+
+	return CapInterfaceNames
 }
