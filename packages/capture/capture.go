@@ -69,41 +69,50 @@ func PacketCaptureByPreference(name string) error {
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
 	for packet := range packetSource.Packets() {
-		// Getting the information from EthernetLayer
+		// Ethernet Layer Information
 		ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
-		fmt.Println(packet)
-		// Exception to handle the empty Information
 		if ethernetLayer == nil {
-			fmt.Println("Error getting infromation !")
+			fmt.Println("No Ethernet layer found, skipping packet")
 			continue
 		}
 		ethernet := ethernetLayer.(*layers.Ethernet)
 
-		// Storing the Ethernet infromation in the EthFrameInfo
 		ethInfo := EthFrameInfo{
 			SourceMacAddr: ethernet.SrcMAC,
 			DestMacAddr:   ethernet.DstMAC,
 			EthType:       ethernet.EthernetType,
 		}
 
-		fmt.Println(ethInfo)
+		fmt.Printf("Ethernet: %+v\n", ethInfo)
 
-		// EthernetType will tell the IPv (Internet Protocol Version)/ Network Layer version
-		NetLayerVersion := ethInfo.EthType.String()
-		fmt.Println(NetLayerVersion)
+		// ARP Layer Infromation
+		arpLayer := packet.Layer(layers.LayerTypeARP)
+		if arpLayer == nil {
+			fmt.Println("No ARP layer found, skipping packet")
+			continue
+		}
 
+		arp := arpLayer.(*layers.ARP)
+
+		arpInfo := ArpLayerInfo{
+			SourceHwAddress:   arp.SourceHwAddress,
+			SourceProtAddress: arp.SourceProtAddress,
+			DstHwAddress:      arp.DstHwAddress,
+			DstProtAddress:    arp.DstProtAddress,
+		}
+		fmt.Printf("Ethernet: %+v\n", arpInfo)
+
+		// IP Layer Information
 		ipInfo := IPLayer{}
-		if NetLayerVersion == "IPv4" {
-			// Getting the information from the IP Layer/ Network Layer
+		switch ethInfo.EthType {
+		case layers.EthernetTypeIPv4:
 			ipLayer := packet.Layer(layers.LayerTypeIPv4)
 			if ipLayer == nil {
-				fmt.Println("Couldn't find IP layer for this packet")
+				fmt.Println("No IPv4 layer found, skipping packet")
 				continue
 			}
 
 			ip := ipLayer.(*layers.IPv4)
-
-			// Storing the IP layer information
 			ipInfo = IPLayer{
 				SourceIPAddr: ip.SrcIP,
 				DestIPAddr:   ip.DstIP,
@@ -111,25 +120,26 @@ func PacketCaptureByPreference(name string) error {
 				TTL:          ip.TTL,
 				Proto:        IPProtocol(ip.Protocol),
 			}
-
-		} else if NetLayerVersion == "IPv6" {
-			// Getting the information from the IP Layer/ Network Layer
+		case layers.EthernetTypeIPv6:
 			ipLayer := packet.Layer(layers.LayerTypeIPv6)
 			if ipLayer == nil {
-				fmt.Println("Couldn't find IP layer for this packet")
+				fmt.Println("No IPv6 layer found, skipping packet")
 				continue
 			}
 
 			ip := ipLayer.(*layers.IPv6)
-
-			// Storing the IP layer information
 			ipInfo = IPLayer{
 				SourceIPAddr: ip.SrcIP,
 				DestIPAddr:   ip.DstIP,
 				IPv:          ip.Version,
 				NextHeader:   IPProtocol(ip.NextHeader),
 			}
+		default:
+			fmt.Println("Unsupported Ethernet type, skipping packet")
+			continue
 		}
+
+		fmt.Printf("IP: %+v\n", ipInfo)
 
 		// Transport Layer Information
 		TransLayerProto := ipInfo.NextHeader
@@ -139,9 +149,6 @@ func PacketCaptureByPreference(name string) error {
 		transinfo := TransLayerInfo{}
 
 		switch TransLayerProto {
-		/* For the protocol ICMP*/
-
-		// For the protocol ICMPv4
 		case 1:
 			TransLayer := packet.Layer(layers.LayerTypeICMPv4)
 			if TransLayer != nil {
@@ -151,9 +158,9 @@ func PacketCaptureByPreference(name string) error {
 					Id:       Trans.Id,
 					Seq:      Trans.Seq,
 				}
+			} else {
+				fmt.Println("No ICMPv4 layer found, skipping packet")
 			}
-
-		// For the protocol ICMPv6
 		case 58:
 			TransLayer := packet.Layer(layers.LayerTypeICMPv6)
 			if TransLayer != nil {
@@ -162,10 +169,8 @@ func PacketCaptureByPreference(name string) error {
 					Checksum: Trans.Checksum,
 				}
 			} else {
-				fmt.Println("NO ICMP Protocol")
+				fmt.Println("No ICMPv6 layer found, skipping packet")
 			}
-
-		// For the protocol TCP
 		case 6:
 			TransLayer := packet.Layer(layers.LayerTypeTCP)
 			if TransLayer != nil {
@@ -187,12 +192,11 @@ func PacketCaptureByPreference(name string) error {
 						CWR: Trans.CWR,
 						NS:  Trans.NS,
 					},
+					Payload: Trans.Payload,
 				}
-
 			} else {
-				fmt.Println("NO TCP PROTOCOL")
+				fmt.Println("No TCP layer found, skipping packet")
 			}
-
 		case 17:
 			TransLayer := packet.Layer(layers.LayerTypeUDP)
 			if TransLayer != nil {
@@ -202,12 +206,45 @@ func PacketCaptureByPreference(name string) error {
 					DestPort:   uint16(Trans.DstPort),
 					Checksum:   Trans.Checksum,
 				}
+			} else {
+				fmt.Println("No UDP layer found, skipping packet")
 			}
+		default:
+			fmt.Println("Unsupported Transport layer protocol, skipping packet")
+			continue
 		}
-		// Log extracted information
-		fmt.Printf("Ethernet: %+v\n", ethInfo)
-		fmt.Printf("IP: %+v\n", ipInfo)
+
 		fmt.Printf("Transport: %+v\n", transinfo)
+
+		// Application Layer Information
+		appinfo := AppLayerInfo{}
+		switch transinfo.DestPort {
+		case 53:
+			AppLayer := packet.Layer(layers.LayerTypeDNS)
+			if AppLayer != nil {
+				app := AppLayer.(*layers.DNS)
+				appinfo = AppLayerInfo{
+					Content: app.Contents,
+				}
+			} else {
+				fmt.Println("No DNS layer found, skipping packet")
+			}
+		case 67:
+			AppLayer := packet.Layer(layers.LayerTypeDHCPv4)
+			if AppLayer != nil {
+				app := AppLayer.(*layers.DHCPv4)
+				appinfo = AppLayerInfo{
+					ClientIP:     app.ClientIP,
+					YourClientIP: app.YourClientIP,
+					NextServerIP: app.NextServerIP,
+					RelayAgentIP: app.RelayAgentIP,
+				}
+			}
+		default:
+			appinfo.Content = transinfo.Payload
+		}
+
+		fmt.Printf("Application: %+v\n", appinfo)
 	}
 
 	return nil

@@ -13,5 +13,6 @@ func main() {
 	interfaces.AssignedAddress(true)
 	interfaces.InterfaceDescription()
 	fmt.Println("/................./")
-	capture.LivePacketCapture()
+	//capture.LivePacketCapture()
+	capture.PacketCaptureByPreference("wlp0s20f3")
 }
